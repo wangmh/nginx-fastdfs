@@ -1,0 +1,21 @@
+
+Version 1.05  2011-03-16
+ * support request header if_modified_since
+
+Version 1.04  2011-03-12
+ * support url parameter "filename" to specify attachment filename
+ * add Last-Modified header
+
+Version 1.03  2011-01-31
+ * use FastDFS V2.08 client library
+
+Version 1.02  2010-12-20
+ * fix signedness and signed assignment
+ * change ngx_http_fastdfs_proxy_handler return type from ngx_int_t to int
+
+Version 1.01  2010-11-15
+ *  use nginx proxy deal approach
+
+Version 1.00  2010-11-08
+ *  first version
+

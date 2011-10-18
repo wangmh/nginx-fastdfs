@@ -1,0 +1,7 @@
+ngx_addon_name=ngx_http_fastdfs_module
+HTTP_MODULES="$HTTP_MODULES ngx_http_fastdfs_module"
+NGX_ADDON_SRCS="$NGX_ADDON_SRCS $ngx_addon_dir/ngx_http_fastdfs_module.c $ngx_addon_dir/fdfs_thumbnail.c"
+NGX_ADDON_DEPS="$ngx_addon_dir/fdfs_thumbnail.h"
+CORE_INCS="$CORE_INCS /usr/local/include/fastdfs /usr/local/include/fastcommon/ /usr/local/include/ImageMagick "  
+CORE_LIBS="$CORE_LIBS -L/usr/local/lib -lfastcommon -lfdfsclient -L/usr/local/lib -lMagickWand -lMagickCore -llcms -ltiff -lfreetype -ljpeg -lpng -lfontconfig -lXext -lXt -lSM -lICE -lX11 -lbz2 -lxml2 -lz -lm -lgomp -lpthread"
+CFLAGS="$CFLAGS -fopenmp  -D_FILE_OFFSET_BITS=64 -DFDFS_OUTPUT_CHUNK_SIZE='256*1024' -DFDFS_MOD_CONF_FILENAME='\"/etc/fdfs/mod_fastdfs.conf\"'"

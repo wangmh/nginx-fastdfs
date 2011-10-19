@@ -1,0 +1,40 @@
+#nginx.config
+
+location ~ ^/group1/M00 {
+                valid_referers none blocked *.gozap.com *.chouti.com *.shouye.com *.labi.com *.datoutie.com *.weibo.com *.qq.com;
+                if ($invalid_referer) {
+                return   403;
+                }
+                if ($http_range){
+                proxy_pass http://192.168.2.34:8000;
+                }
+                proxy_pass http://img.datoutie.com;
+                   }
+
+
+#varnish ??
+backend default {
+     .host = "192.168.2.34";
+     .port = "8000";
+}
+sub vcl_recv {
+              unset req.http.cookie;
+              return (lookup);
+              }
+sub vcl_fetch {
+     if (!beresp.cacheable) {
+     return (pass);
+     }
+     if (beresp.http.Set-Cookie) {
+     return (pass);
+     }
+     if (beresp.http.Content-Range) {
+     return (pass);
+     }
+     set beresp.ttl = 86400s;
+}
+sub vcl_miss {
+  if (req.http.Range) {
+  return (pass);
+  }
+}

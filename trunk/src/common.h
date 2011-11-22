@@ -11,6 +11,7 @@
 
 #include <time.h>
 #include "tracker_types.h"
+#include "fdfs_thumbnail.h"
 
 #ifndef HTTP_OK
 #define HTTP_OK                    200
@@ -100,6 +101,14 @@ struct fdfs_download_callback_args {
 	struct fdfs_http_response *pResponse;
 	int64_t sent_bytes; //sent bytes
 };
+
+struct fdfs_download_callback_with_transition_args {
+	struct fdfs_http_context *pContext;
+	struct fdfs_http_response *pResponse;
+	int64_t sent_bytes; //sent bytes
+	img_transition_info *transition_info;
+};
+
 
 /**
  * init function

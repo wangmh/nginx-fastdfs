@@ -15,20 +15,21 @@
 #include <string.h>
 #include <errno.h>
 #include <time.h>
-#include "fdfs_define.h"
-#include "logger.h"
-#include "shared_func.h"
-#include "fdfs_global.h"
-#include "sockopt.h"
-#include "http_func.h"
-#include "fdfs_http_shared.h"
-#include "fdfs_client.h"
-#include "local_ip_func.h"
+#include <fdfs_define.h>
+#include <logger.h>
+#include <shared_func.h>
+#include <fdfs_global.h>
+#include <sockopt.h>
+#include <http_func.h>
+#include <fdfs_http_shared.h>
+#include <fdfs_client.h>
+#include <local_ip_func.h>
 #include "common.h"
 #include "fdfs_thumbnail.h"
 
 #define FDFS_MOD_REPONSE_MODE_PROXY	'P'
 #define FDFS_MOD_REPONSE_MODE_REDIRECT	'R'
+#define FDFS_MOD_REPONSE_MODE_CLIENT 'C'
 
 static int storage_server_port = FDFS_STORAGE_SERVER_DEF_PORT;
 static int group_name_len = 0;
@@ -130,15 +131,18 @@ int fdfs_mod_init() {
 			break;
 		}
 
-		if ((result = fdfs_http_params_load(&iniContext,
-				FDFS_MOD_CONF_FILENAME, &g_http_params)) != 0) {
+		if ((result = fdfs_http_params_load(&iniContext, FDFS_MOD_CONF_FILENAME,
+				&g_http_params)) != 0) {
 			break;
 		}
 
 		pReponseMode = iniGetStrValue(NULL, "response_mode", &iniContext);
+		//add client 模式
 		if (pReponseMode != NULL) {
 			if (strcmp(pReponseMode, "redirect") == 0) {
 				response_mode = FDFS_MOD_REPONSE_MODE_REDIRECT;
+			} else if (strcmp(pReponseMode, "client") == 0) {
+				response_mode = FDFS_MOD_REPONSE_MODE_CLIENT;
 			}
 		}
 
@@ -161,31 +165,30 @@ int fdfs_mod_init() {
 	fdfs_get_params_from_tracker();
 
 	logInfo("fastdfs apache / nginx module v1.04, "
-		"response_mode=%s, "
-		"base_path=%s, "
-		"connect_timeout=%d, "
-		"network_timeout=%d, "
-		"tracker_server_count=%d, "
-		"storage_server_port=%d, "
-		"group_name=%s, "
-		"if_alias_prefix=%s, "
-		"local_host_ip_count=%d, "
-		"need_find_content_type=%d, "
-		"default_content_type=%s, "
-		"anti_steal_token=%d, "
-		"token_ttl=%ds, "
-		"anti_steal_secret_key length=%d, "
-		"token_check_fail content_type=%s, "
-		"token_check_fail buff length=%d, "
-		"storage_sync_file_max_delay=%ds", response_mode
-			== FDFS_MOD_REPONSE_MODE_PROXY ? "proxy" : "redirect",
+			"response_mode=%s, "
+			"base_path=%s, "
+			"connect_timeout=%d, "
+			"network_timeout=%d, "
+			"tracker_server_count=%d, "
+			"storage_server_port=%d, "
+			"group_name=%s, "
+			"if_alias_prefix=%s, "
+			"local_host_ip_count=%d, "
+			"need_find_content_type=%d, "
+			"default_content_type=%s, "
+			"anti_steal_token=%d, "
+			"token_ttl=%ds, "
+			"anti_steal_secret_key length=%d, "
+			"token_check_fail content_type=%s, "
+			"token_check_fail buff length=%d, "
+			"storage_sync_file_max_delay=%ds",
+			response_mode == FDFS_MOD_REPONSE_MODE_PROXY ? "proxy" : "redirect",
 			g_fdfs_base_path, g_fdfs_connect_timeout, g_fdfs_network_timeout,
 			g_tracker_group.server_count, storage_server_port, group_name,
 			g_if_alias_prefix, g_local_host_ip_count,
 			g_http_params.need_find_content_type,
 			g_http_params.default_content_type, g_http_params.anti_steal_token,
-			g_http_params.token_ttl,
-			g_http_params.anti_steal_secret_key.length,
+			g_http_params.token_ttl, g_http_params.anti_steal_secret_key.length,
 			g_http_params.token_check_fail_content_type,
 			g_http_params.token_check_fail_buff.length,
 			storage_sync_file_max_delay);
@@ -229,22 +232,43 @@ static int ngx_send_thumbnail(void *arg, unsigned char *buf, size_t size) {
 	pResponse->status = http_status;  \
 	pContext->output_headers(pContext->arg, pResponse);
 
-int fdfs_download_callback(void *arg, const int64_t file_size,
-		const char *data, const int current_size) {
+int fdfs_download_callback(void *arg, const int64_t file_size, const char *data,
+		const int current_size) {
 	struct fdfs_download_callback_args *pCallbackArgs;
 
 	pCallbackArgs = (struct fdfs_download_callback_args *) arg;
 
 	if (!pCallbackArgs->pResponse->header_outputed) {
 		pCallbackArgs->pResponse->content_length = file_size;
-		OUTPUT_HEADERS(pCallbackArgs->pContext,
-				pCallbackArgs->pResponse, HTTP_OK)
+		OUTPUT_HEADERS(pCallbackArgs->pContext, pCallbackArgs->pResponse,
+				HTTP_OK)
 	}
 
 	pCallbackArgs->sent_bytes += current_size;
 	return pCallbackArgs->pContext->send_reply_chunk(
-			pCallbackArgs->pContext->arg, (pCallbackArgs->sent_bytes
-					== file_size) ? 1 : 0, data, current_size);
+			pCallbackArgs->pContext->arg,
+			(pCallbackArgs->sent_bytes == file_size) ? 1 : 0, data,
+			current_size);
+}
+
+int fdfs_download_with_transition_callback(void *arg, const int64_t file_size,
+		const char *data, const int current_size) {
+	struct fdfs_download_callback_with_transition_args *pCallbackArgs;
+
+	pCallbackArgs = (struct fdfs_download_callback_with_transition_args *) arg;
+
+	pCallbackArgs->sent_bytes += current_size;
+
+	if (!pCallbackArgs->pResponse->header_outputed) {
+		pCallbackArgs->pResponse->content_length = file_size;
+		OUTPUT_HEADERS(pCallbackArgs->pContext, pCallbackArgs->pResponse,
+				HTTP_OK)
+	}
+
+	return pCallbackArgs->pContext->send_reply_chunk(
+			pCallbackArgs->pContext->arg,
+			(pCallbackArgs->sent_bytes == file_size) ? 1 : 0, data,
+			current_size);
 }
 
 int fdfs_http_request_handler(struct fdfs_http_context *pContext) {
@@ -321,14 +345,10 @@ int fdfs_http_request_handler(struct fdfs_http_context *pContext) {
 
 	param_count = http_parse_query(uri, params, HTTPD_MAX_PARAMS);
 
-	//uri ��ȥ��thumbnail_str�仯Ϊԭͼ��uri
-	//is_thumbnail ��ʾ�Ƿ�Ϊ����ͼ
-
 	pContext->is_thumbnail = filter_thumbnail(uri,
 			image_transition_info.transition_str,
 			sizeof(image_transition_info.transition_str));
 
-	//�Ƿ��в���任ͼ��Ƕ�
 	rotate_degree_str = fdfs_http_get_parameter("rotate", params, param_count);
 
 	if (rotate_degree_str != NULL) {
@@ -357,7 +377,8 @@ int fdfs_http_request_handler(struct fdfs_http_context *pContext) {
 
 	}
 
-	if (pContext->is_rotate || pContext->is_thumbnail || image_transition_info.is_quality)
+	if (pContext->is_rotate || pContext->is_thumbnail
+			|| image_transition_info.is_quality)
 		pContext->do_img_transaction = 1;
 	else
 		pContext->do_img_transaction = 0;
@@ -398,10 +419,10 @@ int fdfs_http_request_handler(struct fdfs_http_context *pContext) {
 				file_id_without_group, timestamp, token,
 				g_http_params.token_ttl) != 0) {
 			if (*(g_http_params.token_check_fail_content_type)) {
-				response.content_length
-						= g_http_params.token_check_fail_buff.length;
-				response.content_type
-						= g_http_params.token_check_fail_content_type;
+				response.content_length =
+						g_http_params.token_check_fail_buff.length;
+				response.content_type =
+						g_http_params.token_check_fail_content_type;
 				OUTPUT_HEADERS(pContext, (&response), HTTP_OK)
 
 				pContext->send_reply_chunk(pContext->arg, 1,
@@ -462,8 +483,9 @@ int fdfs_http_request_handler(struct fdfs_http_context *pContext) {
 		fdfs_format_http_datetime(response.last_modified,
 				response.last_modified_buff,
 				sizeof(response.last_modified_buff));
-		if (*pContext->if_modified_since != '\0' && strcmp(
-				response.last_modified_buff, pContext->if_modified_since) == 0) {
+		if (*pContext->if_modified_since != '\0'
+				&& strcmp(response.last_modified_buff,
+						pContext->if_modified_since) == 0) {
 			OUTPUT_HEADERS(pContext, (&response), HTTP_NOTMODIFIED)
 			return HTTP_NOTMODIFIED;
 		}
@@ -487,25 +509,22 @@ int fdfs_http_request_handler(struct fdfs_http_context *pContext) {
 	if ((!bFileExists) && file_type_before_v_1_23) {
 		logDebug("file: "__FILE__", line: %d, "
 		"file: %s not exists, "
-		"errno: %d, error info: %s", __LINE__, full_filename, errno, strerror(
-				errno));
+		"errno: %d, error info: %s", __LINE__, full_filename, errno,
+				strerror(errno));
 
 		OUTPUT_HEADERS(pContext, (&response), HTTP_NOTFOUND)
 		return HTTP_NOTFOUND;
 	}
-
+	//设置返回的attachment_filename
 	response.attachment_filename = fdfs_http_get_parameter("filename", params,
 			param_count);
-	//�����ļ�������
+
 	if (!bFileExists) {
 		char *redirect;
-		//����ļ���source_ip_addr�Ǳ��صĵ�ַ�������ļ��Ĵ�����Ϣ����0
-		//�ҵ�ǰʱ���ȥ����ͬ��ʱ�䡣��û���ҵ��ļ��Ļ�����ô����
-		//���ļ��Ѿ��������ˡ�
 		if (is_local_host_ip(file_info.source_ip_addr)
-				|| (file_info.create_timestamp > 0 && (time(NULL)
-						- file_info.create_timestamp
-						> storage_sync_file_max_delay))) {
+				|| (file_info.create_timestamp > 0
+						&& (time(NULL) - file_info.create_timestamp
+								> storage_sync_file_max_delay))) {
 			logDebug("file: "__FILE__", line: %d, "
 			"file: %s not exists, "
 			"errno: %d, error info: %s", __LINE__, full_filename, errno,
@@ -517,13 +536,13 @@ int fdfs_http_request_handler(struct fdfs_http_context *pContext) {
 		//logInfo("source ip addr: %s", file_info.source_ip_addr);
 
 		redirect = fdfs_http_get_parameter("redirect", params, param_count);
-		//�����redirect���ˣ��ұ��ص�storage��û���򷵻�
+
 		if (redirect != NULL) {
 			logWarning("file: "__FILE__", line: %d, "
 			"redirect again, url: %s", __LINE__, url);
-
-			OUTPUT_HEADERS(pContext, (&response), HTTP_BADREQUEST)
-			return HTTP_BADREQUEST;
+			//modify for NOT FOUND
+			OUTPUT_HEADERS(pContext, (&response), HTTP_NOTFOUND)
+			return HTTP_NOTFOUND;
 		}
 
 		//�����redirectģʽ��
@@ -561,6 +580,65 @@ int fdfs_http_request_handler(struct fdfs_http_context *pContext) {
 			OUTPUT_HEADERS(pContext, (&response), HTTP_MOVETEMP)
 			return HTTP_MOVETEMP;
 		}
+		//if client mode use fdfs_client get file memory blob;
+		else if (FDFS_MOD_REPONSE_MODE_CLIENT == response_mode) {
+			TrackerServerInfo storage_server;
+			struct fdfs_download_callback_with_transition_args callback_args;
+			int64_t file_size;
+
+			strcpy(storage_server.ip_addr, file_info.source_ip_addr);
+			storage_server.port = storage_server_port;
+			storage_server.sock = -1;
+			callback_args.transition_info = &image_transition_info;
+			callback_args.pContext = pContext;
+			callback_args.pResponse = &response;
+			callback_args.sent_bytes = 0;
+			char *fdfs_download_buf = NULL;
+			result =
+					storage_download_file_to_buff1(NULL, &storage_server, file_id, &fdfs_download_buf, &file_size);
+			if (result == 0) {
+				http_status = HTTP_OK;
+			}else if (result == ENOENT) {
+				http_status = HTTP_NOTFOUND;
+				OUTPUT_HEADERS(pContext, (&response), http_status)
+				return http_status;
+			} else {
+				http_status = HTTP_INTERNAL_SERVER_ERROR;
+				OUTPUT_HEADERS(pContext, (&response), http_status)
+				return http_status;
+			}
+
+			if (pContext->do_img_transaction) {
+				thumbnail_buf = get_transition_image_blob(fdfs_download_buf, file_size,
+						&thumbnail_size, &image_transition_info);
+				free(fdfs_download_buf);
+				if (thumbnail_buf == NULL)
+					return HTTP_NOTFOUND;
+				response.content_length = thumbnail_size;
+				if (pContext->header_only) {
+					free(thumbnail_buf);
+					OUTPUT_HEADERS(pContext, (&response), HTTP_OK)
+					return HTTP_OK;
+				}
+				OUTPUT_HEADERS(pContext, (&response), HTTP_OK)
+				if (ngx_send_thumbnail(pContext->arg, thumbnail_buf,
+						thumbnail_size) != 0) {
+					return HTTP_SERVUNAVAIL;
+				}
+				return HTTP_OK;
+			}else
+			{
+				response.content_length =file_size;
+				OUTPUT_HEADERS(pContext, (&response), HTTP_OK);
+				if (ngx_send_thumbnail(pContext->arg, (unsigned char *)fdfs_download_buf,
+						file_size) != 0) {
+						return HTTP_SERVUNAVAIL;
+					}
+
+				return HTTP_OK;
+			}
+
+		}
 		//�����ô���ķ�ʽ
 		else if (pContext->proxy_handler != NULL) {
 			return pContext->proxy_handler(pContext->arg,
@@ -569,8 +647,8 @@ int fdfs_http_request_handler(struct fdfs_http_context *pContext) {
 	}
 
 	if (g_http_params.need_find_content_type) {
-		if (fdfs_http_get_content_type_by_extname(&g_http_params,
-				true_filename, content_type, sizeof(content_type)) != 0) {
+		if (fdfs_http_get_content_type_by_extname(&g_http_params, true_filename,
+				content_type, sizeof(content_type)) != 0) {
 			OUTPUT_HEADERS(pContext, (&response), HTTP_SERVUNAVAIL)
 			return HTTP_SERVUNAVAIL;
 		}
@@ -617,8 +695,8 @@ int fdfs_http_request_handler(struct fdfs_http_context *pContext) {
 		callback_args.pResponse = &response;
 		callback_args.sent_bytes = 0;
 
-		result = storage_download_file_ex1(NULL, &storage_server, file_id, 0,
-				0, fdfs_download_callback, &callback_args, &file_size);
+		result = storage_download_file_ex1(NULL, &storage_server, file_id, 0, 0,
+				fdfs_download_callback, &callback_args, &file_size);
 
 		logDebug("file: "__FILE__", line: %d, "
 		"storage_download_file_ex1 return code: %d, "
@@ -649,8 +727,8 @@ int fdfs_http_request_handler(struct fdfs_http_context *pContext) {
 	if (fd < 0) {
 		logError("file: "__FILE__", line: %d, "
 		"open file %s fail, "
-		"errno: %d, error info: %s", __LINE__, full_filename, errno, strerror(
-				errno));
+		"errno: %d, error info: %s", __LINE__, full_filename, errno,
+				strerror(errno));
 		OUTPUT_HEADERS(pContext, (&response), HTTP_SERVUNAVAIL)
 		return HTTP_SERVUNAVAIL;
 	}
@@ -659,8 +737,9 @@ int fdfs_http_request_handler(struct fdfs_http_context *pContext) {
 
 	remain_bytes = file_stat.st_size;
 	while (remain_bytes > 0) {
-		read_bytes = remain_bytes <= FDFS_OUTPUT_CHUNK_SIZE ? remain_bytes
-				: FDFS_OUTPUT_CHUNK_SIZE;
+		read_bytes =
+				remain_bytes <= FDFS_OUTPUT_CHUNK_SIZE ?
+						remain_bytes : FDFS_OUTPUT_CHUNK_SIZE;
 		if (read(fd, file_trunk_buff, read_bytes) != read_bytes) {
 			close(fd);
 			logError("file: "__FILE__", line: %d, "
@@ -671,8 +750,9 @@ int fdfs_http_request_handler(struct fdfs_http_context *pContext) {
 		}
 
 		remain_bytes -= read_bytes;
-		if (pContext->send_reply_chunk(pContext->arg, (remain_bytes == 0) ? 1
-				: 0, file_trunk_buff, read_bytes) != 0) {
+		if (pContext->send_reply_chunk(pContext->arg,
+				(remain_bytes == 0) ? 1 : 0, file_trunk_buff, read_bytes)
+				!= 0) {
 			close(fd);
 			return HTTP_SERVUNAVAIL;
 		}

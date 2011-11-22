@@ -31,6 +31,9 @@
   description=(char *) MagickRelinquishMemory(description); \
 }
 
+unsigned char *covert_image(MagickWand *magick_wand,
+		img_transition_info *image_transition_info, size_t * thumbnail_size);
+
 static int is_image_ext(char *filename, char **ext, int len);
 
 typedef enum {
@@ -105,7 +108,8 @@ int filter_thumbnail(char *filename, char thumbnail_str[], int len) {
 		return 0;
 	}
 	thum_start++;
-	if (NULL == (thum_end = strrchr(thum_start, '.'))) {
+	//modify for .jpg.jpg
+	if (NULL == (thum_end = strchr(thum_start, '.'))) {
 		return 0;
 	}
 	if (thum_end - thum_start + 1 >= len)
@@ -165,7 +169,7 @@ unsigned char *get_thumbnail(char *full_filename, char *thumbnail_str,
 	} else if (0 == strcasecmp(fileformat, image_format[JPGEXT])) {
 		is_jpeg_flag = 1;
 	}
-	fileformat = (char *)MagickRelinquishMemory(fileformat);//free();
+	fileformat = (char *)MagickRelinquishMemory(fileformat); //free();
 	if( 'C' == *thumbnail_str ||'c' == *thumbnail_str ) {
 		is_crop = 1;
 	}
@@ -316,27 +320,11 @@ static void get_Crop_offset_and_wh(size_t cw, size_t ch, size_t *width,
 
 }
 
-unsigned char * get_transition_image(char *full_filename,
-		size_t * thumbnail_size, img_transition_info *image_transition_info) {
+unsigned char *covert_image(MagickWand *magick_wand,
+		img_transition_info *image_transition_info, size_t *thumbnail_size) {
 	unsigned char *image_data = NULL;
-
-	if (full_filename == NULL)
-		return NULL;
-	if (image_transition_info == NULL)
-		return NULL;
-	if ((0 == image_transition_info->is_rotate) && ('\0'
-			== image_transition_info->transition_str[0]) && (0
-			== image_transition_info->is_quality))
-		return NULL;
 	MagickBooleanType status;
 	MagickWand *tmp_magick_wand = NULL;
-	MagickWand *magick_wand = NULL;
-	magick_wand = NewMagickWand();
-	status = MagickReadImage(magick_wand, full_filename);
-	if (status == MagickFalse) {
-		ThrowWandException(magick_wand);
-		return NULL;
-	}
 	PixelWand *background = NULL;
 	size_t height = MagickGetImageHeight(magick_wand);
 	size_t old_height = height;
@@ -351,7 +339,7 @@ unsigned char * get_transition_image(char *full_filename,
 	int do_quality = 0;
 	char *fileformat = NULL;
 	size_t cw = 0; //crop weight
-	size_t ch = 0;//crop height
+	size_t ch = 0; //crop height
 
 	size_t x_offset = 0;
 	size_t y_offset = 0;
@@ -368,8 +356,7 @@ unsigned char * get_transition_image(char *full_filename,
 	} else if (0 == strcasecmp(fileformat, image_format[JPGEXT])) {
 		is_jpeg_flag = 1;
 	}
-	fileformat = (char *) MagickRelinquishMemory(fileformat);//free();
-
+	fileformat = (char *) MagickRelinquishMemory(fileformat); //free();
 
 	if ('c' == image_transition_info->transition_str[0]) {
 		is_crop = 1;
@@ -382,19 +369,21 @@ unsigned char * get_transition_image(char *full_filename,
 		ParseMetaGeometry(image_transition_info->transition_str + 1, &i, &j,
 				&width, &height);
 	} else if (is_thumbnail) {
-		ParseMetaGeometry(image_transition_info->transition_str, &i, &j,
-				&width, &height);
-		if (old_width == width && height == old_height)//���ߴ���ͬ����������
+		ParseMetaGeometry(image_transition_info->transition_str, &i, &j, &width,
+				&height);
+		if (old_width == width && height == old_height) //���ߴ���ͬ����������
 			is_thumbnail = 0;
 	} else if (is_Crop) {
-		if (0 >= get_Crop_width_height(image_transition_info->transition_str
-				+ 1, &cw, &ch, &x_offset, &y_offset)) {
+		if (0
+				>= get_Crop_width_height(
+						image_transition_info->transition_str + 1, &cw, &ch,
+						&x_offset, &y_offset)) {
 			logError("%s%s:Crop  %s error\n", __FILE__, __func__,
 					image_transition_info->transition_str + 1);
 			magick_wand = DestroyMagickWand(magick_wand);
 			return NULL;
 		}
-#if 0               
+#if 0
 		if(cw > width || ch > height) {
 			image_data = MagickGetImagesBlob(magick_wand, thumbnail_size);
 			magick_wand = DestroyMagickWand(magick_wand);
@@ -426,8 +415,8 @@ unsigned char * get_transition_image(char *full_filename,
 		 * if size of the image less than 800 * 600 and that's type is JPEG, then do
 		 * quality 100 OP
 		 */
-		if ((old_width < 800) && (old_height < 600) && is_jpeg_flag && is_crop
-				!= 1 && (image_transition_info->is_quality == 0)) {
+		if ((old_width < 800) && (old_height < 600) && is_jpeg_flag
+				&& is_crop != 1 && (image_transition_info->is_quality == 0)) {
 			do_quality = 1;
 		}
 		background = NewPixelWand();
@@ -451,15 +440,68 @@ unsigned char * get_transition_image(char *full_filename,
 				MagickRotateImage(magick_wand, background,
 						(double) (image_transition_info->degree));
 			}
-			if(image_transition_info->is_quality){
-				MagickSetImageCompressionQuality(magick_wand, image_transition_info->quality);
+			if (image_transition_info->is_quality) {
+				MagickSetImageCompressionQuality(magick_wand,
+						image_transition_info->quality);
 			}
 			MagickStripImage(magick_wand);
 		}
 		background = DestroyPixelWand(background);
 		image_data = MagickGetImagesBlob(magick_wand, thumbnail_size);
 	}
+	return image_data;
+}
+
+unsigned char * get_transition_image(char *full_filename,
+		size_t * thumbnail_size, img_transition_info *image_transition_info) {
+	unsigned char *image_data = NULL;
+
+	if (full_filename == NULL)
+		return NULL;
+	if (image_transition_info == NULL)
+		return NULL;
+	if ((0 == image_transition_info->is_rotate)
+			&& ('\0' == image_transition_info->transition_str[0])
+			&& (0 == image_transition_info->is_quality))
+		return NULL;
+	MagickBooleanType status;
+	MagickWand *magick_wand = NULL;
+	magick_wand = NewMagickWand();
+	status = MagickReadImage(magick_wand, full_filename);
+	if (status == MagickFalse) {
+		ThrowWandException(magick_wand);
+		return NULL;
+	}
+	image_data = covert_image(magick_wand, image_transition_info,
+			thumbnail_size);
 	magick_wand = DestroyMagickWand(magick_wand);
 	return image_data;
 }
 
+unsigned char * get_transition_image_blob(char *file_buf, int buf_size,
+		size_t * thumbnail_size, img_transition_info *image_transition_info) {
+
+	unsigned char *image_data = NULL;
+
+	if (file_buf == NULL)
+		return NULL;
+	if (image_transition_info == NULL)
+		return NULL;
+	if ((0 == image_transition_info->is_rotate)
+			&& ('\0' == image_transition_info->transition_str[0])
+			&& (0 == image_transition_info->is_quality))
+		return NULL;
+	MagickBooleanType status;
+	MagickWand *magick_wand = NULL;
+	magick_wand = NewMagickWand();
+	status = MagickReadImageBlob(magick_wand, file_buf, buf_size);
+	if (status == MagickFalse) {
+		ThrowWandException(magick_wand);
+		return NULL;
+	}
+	image_data = covert_image(magick_wand, image_transition_info,
+			thumbnail_size);
+	magick_wand = DestroyMagickWand(magick_wand);
+	return image_data;
+
+}

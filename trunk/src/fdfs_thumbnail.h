@@ -17,4 +17,7 @@ int filter_thumbnail(char * filename, char thumbnail_str [ ], int len);
 unsigned char * get_transition_image(char *full_filename,  size_t * thumbnail_size,
         img_transition_info *image_transition_info);
 
+unsigned char * get_transition_image_blob(char *file_buf, int buf_size, size_t * thumbnail_size,
+        img_transition_info *image_transition_info);
+
 #endif /*FDFS_THUMBNAIL_H_*/

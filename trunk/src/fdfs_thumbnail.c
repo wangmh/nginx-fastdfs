@@ -380,7 +380,7 @@ unsigned char *covert_image(MagickWand *magick_wand,
 						&x_offset, &y_offset)) {
 			logError("%s%s:Crop  %s error\n", __FILE__, __func__,
 					image_transition_info->transition_str + 1);
-			magick_wand = DestroyMagickWand(magick_wand);
+
 			return NULL;
 		}
 #if 0
@@ -409,6 +409,8 @@ unsigned char *covert_image(MagickWand *magick_wand,
 		if (is_gif_flag) {
 			tmp_magick_wand = magick_wand;
 			magick_wand = MagickCoalesceImages(tmp_magick_wand);
+			tmp_magick_wand = magick_wand;
+			magick_wand = MagickOptimizeImageLayers(tmp_magick_wand);
 			tmp_magick_wand = DestroyMagickWand(tmp_magick_wand);
 		}
 		/*
@@ -435,6 +437,9 @@ unsigned char *covert_image(MagickWand *magick_wand,
 			} else if (is_Crop == 1) {
 				MagickThumbnailImage(magick_wand, width, height);
 				MagickCropImage(magick_wand, cw, ch, x_offset, y_offset);
+				if(is_gif_flag){// gif should thumbnail again
+					MagickThumbnailImage(magick_wand, cw, ch);
+				}
 			}
 			if (image_transition_info->is_rotate == 1) {
 				MagickRotateImage(magick_wand, background,
@@ -448,6 +453,10 @@ unsigned char *covert_image(MagickWand *magick_wand,
 		}
 		background = DestroyPixelWand(background);
 		image_data = MagickGetImagesBlob(magick_wand, thumbnail_size);
+
+		if (is_gif_flag) {
+			magick_wand = DestroyMagickWand(magick_wand);
+		}
 	}
 	return image_data;
 }
@@ -478,7 +487,7 @@ unsigned char * get_transition_image(char *full_filename,
 	return image_data;
 }
 
-unsigned char * get_transition_image_blob(char *file_buf, int buf_size,
+unsigned char *get_transition_image_blob(char *file_buf, int buf_size,
 		size_t * thumbnail_size, img_transition_info *image_transition_info) {
 
 	unsigned char *image_data = NULL;

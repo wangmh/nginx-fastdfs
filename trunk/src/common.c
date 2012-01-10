@@ -42,6 +42,8 @@ static int storage_sync_file_max_delay = 24 * 3600;
 static int fdfs_get_params_from_tracker();
 static int fdfs_format_http_datetime(time_t t, char *buff, const int buff_size);
 
+
+
 int fdfs_mod_init() {
 	IniContext iniContext;
 	int result;
@@ -505,7 +507,7 @@ int fdfs_http_request_handler(struct fdfs_http_context *pContext) {
 	} else {
 		bFileExists = true;
 	}
-	//�����1.23�汾֮ǰ���ļ��Ҹ��ļ������ڣ�ֱ�ӷ���
+	//如果文件不存在，且文件类型大于1.23
 	if ((!bFileExists) && file_type_before_v_1_23) {
 		logDebug("file: "__FILE__", line: %d, "
 		"file: %s not exists, "
@@ -521,10 +523,11 @@ int fdfs_http_request_handler(struct fdfs_http_context *pContext) {
 
 	if (!bFileExists) {
 		char *redirect;
-		if (is_local_host_ip(file_info.source_ip_addr)
+		//如果不是client模式，且...
+		if ( (response_mode != FDFS_MOD_REPONSE_MODE_CLIENT) && (is_local_host_ip(file_info.source_ip_addr)
 				|| (file_info.create_timestamp > 0
 						&& (time(NULL) - file_info.create_timestamp
-								> storage_sync_file_max_delay))) {
+								> storage_sync_file_max_delay)))) {
 			logDebug("file: "__FILE__", line: %d, "
 			"file: %s not exists, "
 			"errno: %d, error info: %s", __LINE__, full_filename, errno,

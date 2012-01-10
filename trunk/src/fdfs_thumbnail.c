@@ -324,7 +324,7 @@ unsigned char *covert_image(MagickWand *magick_wand,
 		img_transition_info *image_transition_info, size_t *thumbnail_size) {
 	unsigned char *image_data = NULL;
 	MagickBooleanType status;
-	MagickWand *tmp_magick_wand = NULL;
+//	MagickWand *tmp_magick_wand = NULL;
 	PixelWand *background = NULL;
 	size_t height = MagickGetImageHeight(magick_wand);
 	size_t old_height = height;
@@ -406,13 +406,13 @@ unsigned char *covert_image(MagickWand *magick_wand,
 		 * if type of the image is GIF, maybe have more than one frame, so do this different
 		 *  from others
 		 */
-		if (is_gif_flag) {
-			tmp_magick_wand = magick_wand;
-			magick_wand = MagickCoalesceImages(tmp_magick_wand);
-			tmp_magick_wand = magick_wand;
-			magick_wand = MagickOptimizeImageLayers(tmp_magick_wand);
-			tmp_magick_wand = DestroyMagickWand(tmp_magick_wand);
-		}
+//		if (is_gif_flag) {
+//			tmp_magick_wand = magick_wand;
+//			magick_wand = MagickCoalesceImages(tmp_magick_wand);
+//			tmp_magick_wand = magick_wand;
+//			magick_wand = MagickOptimizeImageLayers(tmp_magick_wand);
+//			tmp_magick_wand = DestroyMagickWand(tmp_magick_wand);
+//		}
 		/*
 		 * if size of the image less than 800 * 600 and that's type is JPEG, then do
 		 * quality 100 OP
@@ -424,39 +424,45 @@ unsigned char *covert_image(MagickWand *magick_wand,
 		background = NewPixelWand();
 		status = PixelSetColor(background, "#000000");
 
-		MagickResetIterator(magick_wand);
-		while (MagickNextImage(magick_wand) != MagickFalse) {
-			if (do_quality) {
-				MagickSetImageCompressionQuality(magick_wand, 100);
-				MagickStripImage(magick_wand);
-			}
-			if (is_thumbnail == 1) {
-				MagickThumbnailImage(magick_wand, width, height);
-			} else if (is_crop == 1) {
-				MagickCropImage(magick_wand, width, height, i, j);
-			} else if (is_Crop == 1) {
-				MagickThumbnailImage(magick_wand, width, height);
-				MagickCropImage(magick_wand, cw, ch, x_offset, y_offset);
-				if(is_gif_flag){// gif should thumbnail again
-					MagickThumbnailImage(magick_wand, cw, ch);
-				}
-			}
-			if (image_transition_info->is_rotate == 1) {
-				MagickRotateImage(magick_wand, background,
-						(double) (image_transition_info->degree));
-			}
-			if (image_transition_info->is_quality) {
-				MagickSetImageCompressionQuality(magick_wand,
-						image_transition_info->quality);
-			}
-			MagickStripImage(magick_wand);
-		}
-		background = DestroyPixelWand(background);
-		image_data = MagickGetImagesBlob(magick_wand, thumbnail_size);
+		/* for gif
+		 MagickResetIterator(magick_wand);
+		 */
+		MagickWand *tmp_magick_wand = MagickGetImage(magick_wand);
 
-		if (is_gif_flag) {
-			magick_wand = DestroyMagickWand(magick_wand);
+//		while (MagickNextImage(tmp_magick_wand) != MagickFalse) {
+		if (do_quality) {
+			MagickSetImageCompressionQuality(tmp_magick_wand, 100);
+			MagickStripImage(tmp_magick_wand);
 		}
+		if (is_thumbnail == 1) {
+			MagickThumbnailImage(tmp_magick_wand, width, height);
+		} else if (is_crop == 1) {
+			MagickCropImage(tmp_magick_wand, width, height, i, j);
+		} else if (is_Crop == 1) {
+			MagickThumbnailImage(tmp_magick_wand, width, height);
+			MagickCropImage(tmp_magick_wand, cw, ch, x_offset, y_offset);
+			if (is_gif_flag) { // gif should thumbnail again
+				MagickThumbnailImage(tmp_magick_wand, cw, ch);
+			}
+		}
+		if (image_transition_info->is_rotate == 1) {
+			MagickRotateImage(tmp_magick_wand, background,
+					(double) (image_transition_info->degree));
+		}
+		if (image_transition_info->is_quality) {
+			MagickSetImageCompressionQuality(tmp_magick_wand,
+					image_transition_info->quality);
+		}
+		MagickStripImage(tmp_magick_wand);
+//		}
+
+		background = DestroyPixelWand(background);
+		image_data = MagickGetImagesBlob(tmp_magick_wand, thumbnail_size);
+		tmp_magick_wand = DestroyMagickWand(tmp_magick_wand);
+//
+//		if (is_gif_flag) {
+//			magick_wand = DestroyMagickWand(magick_wand);
+//		}
 	}
 	return image_data;
 }
